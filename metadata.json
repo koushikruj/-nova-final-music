@@ -1,0 +1,8 @@
+{
+  "name": "Nova Music Player",
+  "description": "An artwork-first music streaming player with real audio playback, freemium tier access, Firebase authentication, sleep timer HUD, playlists, and custom queue management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
