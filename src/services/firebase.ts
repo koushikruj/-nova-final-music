@@ -24,7 +24,8 @@ import {
   onSnapshot,
   collection,
   query,
-  orderBy
+  orderBy,
+  getDocs
 } from 'firebase/firestore';
 import { UserProfile, SubscriptionRequest, BanRecord } from '../types';
 import { getHardwareId, getPublicIpAddress } from '../utils/deviceInfo';
@@ -615,5 +616,90 @@ export function subscribeToSubscriptionRequestsSnapshot(onUpdate: (requests: Sub
   } catch (err) {
     console.warn('Failed setting up subscription requests listener:', err);
     return () => {};
+  }
+}
+
+// ---------- Favorites and Playlists Methods ----------
+import { Playlist } from '../types';
+
+export async function saveFavoriteToFirestore(uid: string, trackId: string): Promise<void> {
+  try {
+    const { db } = initFirebaseService();
+    if (!db) throw new Error("Firebase DB not initialized");
+    const ref = doc(db, 'users', uid, 'favorites', trackId);
+    await setDoc(ref, {
+      id: trackId,
+      trackId: trackId,
+      addedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("Failed to save favorite:", error);
+  }
+}
+
+export async function removeFavoriteFromFirestore(uid: string, trackId: string): Promise<void> {
+  try {
+    const { db } = initFirebaseService();
+    if (!db) throw new Error("Firebase DB not initialized");
+    const ref = doc(db, 'users', uid, 'favorites', trackId);
+    await deleteDoc(ref);
+  } catch (error) {
+    console.error("Failed to remove favorite:", error);
+  }
+}
+
+export async function fetchUserFavoritesFromFirestore(uid: string): Promise<string[]> {
+  try {
+    const { db } = initFirebaseService();
+    if (!db) throw new Error("Firebase DB not initialized");
+    const ref = collection(db, 'users', uid, 'favorites');
+    const snap = await getDocs(ref);
+    return snap.docs.map(doc => doc.data().trackId as string);
+  } catch (error) {
+    console.error("Failed to fetch favorites:", error);
+    return [];
+  }
+}
+
+export async function savePlaylistToFirestore(uid: string, playlist: Playlist): Promise<void> {
+  try {
+    const { db } = initFirebaseService();
+    if (!db) throw new Error("Firebase DB not initialized");
+    const ref = doc(db, 'users', uid, 'playlists', playlist.id);
+    await setDoc(ref, {
+      id: playlist.id,
+      name: playlist.name,
+      description: playlist.description || '',
+      coverImage: playlist.coverImage || '',
+      trackIds: playlist.trackIds || [],
+      createdAt: playlist.createdAt,
+      updatedAt: playlist.updatedAt
+    });
+  } catch (error) {
+    console.error("Failed to save playlist:", error);
+  }
+}
+
+export async function deletePlaylistFromFirestore(uid: string, playlistId: string): Promise<void> {
+  try {
+    const { db } = initFirebaseService();
+    if (!db) throw new Error("Firebase DB not initialized");
+    const ref = doc(db, 'users', uid, 'playlists', playlistId);
+    await deleteDoc(ref);
+  } catch (error) {
+    console.error("Failed to delete playlist:", error);
+  }
+}
+
+export async function fetchUserPlaylistsFromFirestore(uid: string): Promise<Playlist[]> {
+  try {
+    const { db } = initFirebaseService();
+    if (!db) throw new Error("Firebase DB not initialized");
+    const ref = collection(db, 'users', uid, 'playlists');
+    const snap = await getDocs(ref);
+    return snap.docs.map(doc => doc.data() as Playlist);
+  } catch (error) {
+    console.error("Failed to fetch playlists:", error);
+    return [];
   }
 }

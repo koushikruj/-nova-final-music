@@ -15,7 +15,13 @@ import {
   subscribeToBannedListSnapshot,
   banUserInFirestore,
   unbanUserInFirestore,
-  updateUserProfileNameAndPhoto
+  updateUserProfileNameAndPhoto,
+  saveFavoriteToFirestore,
+  removeFavoriteFromFirestore,
+  fetchUserFavoritesFromFirestore,
+  savePlaylistToFirestore,
+  deletePlaylistFromFirestore,
+  fetchUserPlaylistsFromFirestore
 } from '../services/firebase';
 import { getHardwareId, getPublicIpAddress } from '../utils/deviceInfo';
 
@@ -79,6 +85,8 @@ interface PlayerContextType {
   queueIndex: number;
   isLoading: boolean;
   isBuffering: boolean;
+  isVideoMode: boolean;
+  setIsVideoMode: React.Dispatch<React.SetStateAction<boolean>>;
   error: string | null;
   analyserRef: React.MutableRefObject<AnalyserNode | null>;
   audioContextRef: React.MutableRefObject<AudioContext | null>;
@@ -203,7 +211,13 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [playlists, setPlaylists] = useState<Playlist[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.PLAYLISTS);
-      return saved ? JSON.parse(saved) : DEFAULT_PLAYLISTS;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      }
+      return DEFAULT_PLAYLISTS;
     } catch {
       return DEFAULT_PLAYLISTS;
     }
@@ -214,7 +228,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const saved = localStorage.getItem(STORAGE_KEYS.FAVORITES);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
@@ -247,6 +261,9 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const initialQueue = savedState?.queue && savedState.queue.length > 0 ? savedState.queue : DEFAULT_TRACKS;
   const initialQueueIndex = savedState?.queueIndex !== undefined ? savedState.queueIndex : 0;
   
+  const isPlayingRef = useRef(false);
+  const currentTimeRef = useRef(0);
+  
   const [currentTrack, setCurrentTrack] = useState<Track | null>(initialCurrentTrack);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -258,6 +275,12 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [queue, setQueue] = useState<Track[]>(initialQueue);
   const [queueIndex, setQueueIndex] = useState<number>(initialQueueIndex);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // Update refs when state changes
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+    currentTimeRef.current = currentTime;
+  }, [isPlaying, currentTime]);
   const [isBuffering, setIsBuffering] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -273,6 +296,39 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // UI state
   const [activeDrawer, setActiveDrawer] = useState<DrawerType>(null);
+  const [isVideoMode, setIsVideoMode] = useState<boolean>(false);
+
+  // Video Dragging State
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0, offsetX: 0, offsetY: 0 });
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    setIsDragging(true);
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      offsetX: dragOffset.x,
+      offsetY: dragOffset.y
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+    setDragOffset({
+      x: dragStartRef.current.offsetX + dx,
+      y: dragStartRef.current.offsetY + dy
+    });
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    setIsDragging(false);
+    e.currentTarget.releasePointerCapture(e.pointerId);
+  };
+
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -392,6 +448,34 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     return false;
   }, [userProfile]);
+
+  // Fetch User Favorites & Playlists from Firestore on Login
+  useEffect(() => {
+    if (!userProfile?.uid) return;
+    
+    let isMounted = true;
+    const loadUserData = async () => {
+      try {
+        const [favs, plsts] = await Promise.all([
+          fetchUserFavoritesFromFirestore(userProfile.uid),
+          fetchUserPlaylistsFromFirestore(userProfile.uid)
+        ]);
+        if (!isMounted) return;
+        
+        if (Array.isArray(favs) && favs.length > 0) {
+          setFavorites(favs);
+        }
+        if (plsts.length > 0) {
+          setPlaylists(plsts);
+        }
+      } catch (err) {
+        console.error("Error loading user data:", err);
+      }
+    };
+    loadUserData();
+    
+    return () => { isMounted = false; };
+  }, [userProfile?.uid]);
 
   // Sync User Profile to localStorage
   useEffect(() => {
@@ -1270,36 +1354,33 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   const toggleFavorite = (trackOrId: string | Track) => {
-    let trackId: string;
-    let trackObj: Track | undefined;
-
-    if (typeof trackOrId === 'string') {
-      trackId = trackOrId;
-      trackObj = tracks.find(t => t.id === trackId) || (currentTrack?.id === trackId ? currentTrack : undefined);
-    } else {
-      trackId = trackOrId.id;
-      trackObj = trackOrId;
-    }
-
-    if (trackObj) {
-      setTracks(prev => {
-        if (!prev.some(t => t.id === trackObj!.id)) {
-          return [trackObj!, ...prev];
-        }
-        return prev;
+    const trackId = typeof trackOrId === 'string' ? trackOrId : trackOrId.id;
+    const trackObj = typeof trackOrId === 'object' ? trackOrId : tracks.find(t => t.id === trackId);
+    
+    if (trackObj && !recentlyPlayed.find(t => t.id === trackId)) {
+      setRecentlyPlayed(prev => {
+        const unique = prev.filter(t => t.id !== trackId);
+        return [trackObj, ...unique].slice(0, 20);
       });
     }
 
     setFavorites(prev => {
-      const exists = prev.includes(trackId);
+      const safePrev = Array.isArray(prev) ? prev : [];
+      const exists = safePrev.includes(trackId);
       let updated: string[];
       if (exists) {
-        updated = prev.filter(id => id !== trackId);
+        updated = safePrev.filter(id => id !== trackId);
         showToast('Removed from Favorites');
+        if (userProfile?.uid) {
+          removeFavoriteFromFirestore(userProfile.uid, trackId).catch(console.error);
+        }
       } else {
-        updated = [trackId, ...prev];
+        updated = [trackId, ...safePrev];
         const title = trackObj ? `"${trackObj.title}"` : 'Song';
         showToast(`Added ${title} to Favorites`);
+        if (userProfile?.uid) {
+          saveFavoriteToFirestore(userProfile.uid, trackId).catch(console.error);
+        }
       }
       return updated;
     });
@@ -1317,6 +1398,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
 
     setPlaylists(prev => [newPl, ...prev]);
+    if (userProfile?.uid) { savePlaylistToFirestore(userProfile.uid, newPl).catch(console.error); }
     showToast(`Created playlist "${newPl.name}"`);
     return newPl;
   };
@@ -1368,32 +1450,36 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       prev.map(pl => {
         if (pl.id === playlistId) {
           if (pl.trackIds.includes(trackId)) return pl;
-          return {
+          const updatedPl = {
             ...pl,
             trackIds: [...pl.trackIds, trackId],
             updatedAt: new Date().toISOString()
           };
+          if (userProfile?.uid) { savePlaylistToFirestore(userProfile.uid, updatedPl).catch(console.error); }
+          return updatedPl;
         }
         return pl;
       })
     );
-    showToast('Added song to playlist');
+    showToast('Added to playlist');
   };
 
   const removeTrackFromPlaylist = (playlistId: string, trackId: string) => {
     setPlaylists(prev =>
       prev.map(pl => {
         if (pl.id === playlistId) {
-          return {
+          const updatedPl = {
             ...pl,
             trackIds: pl.trackIds.filter(id => id !== trackId),
             updatedAt: new Date().toISOString()
           };
+          if (userProfile?.uid) { savePlaylistToFirestore(userProfile.uid, updatedPl).catch(console.error); }
+          return updatedPl;
         }
         return pl;
       })
     );
-    showToast('Removed song from playlist');
+    showToast('Removed from playlist');
   };
 
   const reorderPlaylistTracks = (playlistId: string, fromIndex: number, toIndex: number) => {
@@ -1404,24 +1490,29 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (fromIndex < 0 || fromIndex >= nextTrackIds.length || toIndex < 0 || toIndex >= nextTrackIds.length) return pl;
         const [moved] = nextTrackIds.splice(fromIndex, 1);
         nextTrackIds.splice(toIndex, 0, moved);
-        return {
+        const updatedPl = {
           ...pl,
           trackIds: nextTrackIds,
           updatedAt: new Date().toISOString()
         };
+        if (userProfile?.uid) { savePlaylistToFirestore(userProfile.uid, updatedPl).catch(console.error); }
+        return updatedPl;
       })
     );
   };
 
   const deletePlaylist = (playlistId: string) => {
     setPlaylists(prev => prev.filter(pl => pl.id !== playlistId));
+    if (userProfile?.uid) { deletePlaylistFromFirestore(userProfile.uid, playlistId).catch(console.error); }
     showToast('Deleted playlist');
   };
 
   const updatePlaylist = (playlistId: string, updates: Partial<Playlist>) => {
     setPlaylists(prev => prev.map(pl => {
       if (pl.id === playlistId) {
-        return { ...pl, ...updates, updatedAt: new Date().toISOString() };
+        const updatedPl = { ...pl, ...updates, updatedAt: new Date().toISOString() };
+        if (userProfile?.uid) { savePlaylistToFirestore(userProfile.uid, updatedPl).catch(console.error); }
+        return updatedPl;
       }
       return pl;
     }));
@@ -1489,6 +1580,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           });
 
           setPlaylists(prev => [importedPlaylist, ...prev]);
+          if (userProfile?.uid) { savePlaylistToFirestore(userProfile.uid, importedPlaylist).catch(console.error); }
           showToast(`Imported "${importedPlaylist.name}" (${importedTracks.length} tracks)`);
           return importedPlaylist;
         }
@@ -1579,6 +1671,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
 
       setPlaylists(prev => [clientPlaylist, ...prev]);
+      if (userProfile?.uid) { savePlaylistToFirestore(userProfile.uid, clientPlaylist).catch(console.error); }
       showToast(`Imported "${clientPlaylist.name}" (${clientTracks.length} tracks)`);
       return clientPlaylist;
 
@@ -1656,6 +1749,8 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         queueIndex,
         isLoading,
         isBuffering,
+        isVideoMode,
+        setIsVideoMode,
         error,
         analyserRef,
         audioContextRef,
@@ -1663,7 +1758,7 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setPlaybackRate,
         tracks,
         playlists,
-        favorites,
+        favorites: Array.isArray(favorites) ? favorites : [],
         recentlyPlayed,
         userProfile,
         setUserProfile,
@@ -1722,29 +1817,65 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     >
       {children}
       {youtubeId && (
-        <div className="fixed top-0 -left-[9999px] w-[300px] h-[300px] opacity-0 pointer-events-none z-[-100]">
-          <YouTube
-            videoId={youtubeId}
-            opts={{
-              height: '300',
-              width: '300',
-              playerVars: {
-                autoplay: 1,
-                controls: 0,
-                disablekb: 1,
-                fs: 0,
-                modestbranding: 1,
-                rel: 0,
-                showinfo: 0,
-                iv_load_policy: 3,
-                enablejsapi: 1,
-                origin: typeof window !== 'undefined' ? window.location.origin : undefined
-              },
-            }}
-            onReady={onYtReady}
-            onStateChange={onYtStateChange}
-            onError={onYtError}
-          />
+        <div 
+          className={
+            isVideoMode 
+              ? "fixed bottom-24 right-4 w-72 sm:w-80 md:w-96 aspect-video rounded-2xl overflow-hidden shadow-2xl border border-white/20 z-[9999]" 
+              : "fixed top-0 -left-[9999px] w-[300px] h-[300px] opacity-0 pointer-events-none z-[-100]"
+          }
+          style={
+            isVideoMode 
+              ? {
+                  transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)`,
+                  cursor: isDragging ? 'grabbing' : 'grab',
+                  touchAction: 'none'
+                }
+              : {}
+          }
+        >
+          {isVideoMode && (
+             <>
+               <div
+                 className="absolute inset-0 z-20"
+                 onPointerDown={handlePointerDown}
+                 onPointerMove={handlePointerMove}
+                 onPointerUp={handlePointerUp}
+                 onPointerCancel={handlePointerUp}
+               />
+               <div className="absolute top-2 right-2 z-30 flex gap-2">
+                 <button onClick={(e) => { e.stopPropagation(); setIsVideoMode(false); }} className="p-1.5 bg-black/60 hover:bg-rose-500 rounded-full text-white backdrop-blur-md transition-colors shadow-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                 </button>
+               </div>
+             </>
+          )}
+          <div className="w-full h-full pointer-events-none">
+            <YouTube
+              videoId={youtubeId}
+              className="w-full h-full"
+              opts={{
+                height: '100%',
+                width: '100%',
+                playerVars: {
+                  autoplay: 1,
+                  controls: 0,
+                  disablekb: 1,
+                  fs: 0,
+                  modestbranding: 1,
+                  rel: 0,
+                  showinfo: 0,
+                  iv_load_policy: 3,
+                  cc_load_policy: 3,
+                  enablejsapi: 1,
+                  origin: typeof window !== 'undefined' ? window.location.origin : undefined
+                },
+              }}
+              onReady={onYtReady}
+              onStateChange={onYtStateChange}
+              onError={onYtError}
+            />
+            <div className="absolute inset-0 z-10" />
+          </div>
         </div>
       )}
     </PlayerContext.Provider>

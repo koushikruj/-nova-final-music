@@ -396,11 +396,11 @@ export const SearchModal: React.FC = () => {
                         <button
                           onClick={() => toggleFavorite(track)}
                           className={`p-1.5 rounded-full backdrop-blur-md bg-black/40 hover:bg-black/60 transition-colors ${
-                            favorites.includes(track.id) ? 'text-rose-500' : 'text-white hover:text-rose-400'
+                            (Array.isArray(favorites) ? favorites : []).includes(track.id) ? 'text-rose-500' : 'text-white hover:text-rose-400'
                           }`}
-                          title={favorites.includes(track.id) ? 'Unlike' : 'Like'}
+                          title={(Array.isArray(favorites) ? favorites : []).includes(track.id) ? 'Unlike' : 'Like'}
                         >
-                          <Heart className={`w-4 h-4 ${favorites.includes(track.id) ? 'fill-current' : ''}`} />
+                          <Heart className={`w-4 h-4 ${(Array.isArray(favorites) ? favorites : []).includes(track.id) ? 'fill-current' : ''}`} />
                         </button>
 
                         <div className="flex gap-1.5">

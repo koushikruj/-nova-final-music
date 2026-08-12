@@ -21,6 +21,7 @@ export const PlaylistDrawer: React.FC = () => {
     removeTrackFromPlaylist,
     reorderPlaylistTracks,
     addCustomTrackToPlaylist,
+    addTrackToPlaylist,
     toggleFavorite,
     hasPermission
   } = usePlayer();
@@ -303,6 +304,16 @@ export const PlaylistDrawer: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-1.5">
+                      {currentTrack && !selectedPlaylist.trackIds.includes(currentTrack.id) && (
+                        <button
+                          onClick={() => addTrackToPlaylist(selectedPlaylist.id, currentTrack.id)}
+                          className="px-2.5 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1 transition-colors"
+                          title="Add current track to playlist"
+                        >
+                          <PlusCircle className="w-3.5 h-3.5" />
+                          <span>Add Current</span>
+                        </button>
+                      )}
                       <button
                         onClick={() => setShowAddSongForm(prev => !prev)}
                         className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1 transition-colors"

@@ -66,6 +66,8 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isPlaying, vol
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const { analyserRef } = usePlayer();
   const dataArrayRef = useRef<Uint8Array | null>(null);
+  const beatIntensityRef = useRef(0);
+  const lastBassRef = useRef(0);
 
   const [mode, setMode] = useState<VisualizerMode>('bars');
   const [themeKey, setThemeKey] = useState<ColorTheme>('neon');
@@ -127,7 +129,15 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isPlaying, vol
         }
         if (sum > 0) {
           useRealData = true;
-          bassEnergy = (bassSum / (binCount * 0.15 * 255)) * Math.max(0.2, volume);
+          // Beat detection: look for significant energy spikes
+          const rawBass = (bassSum / (binCount * 0.15 * 255));
+          if (rawBass > (lastBassRef.current || 0) + 0.08) {
+            beatIntensityRef.current = 1.0;
+          } else {
+            beatIntensityRef.current *= 0.92; // smooth decay
+          }
+          lastBassRef.current = rawBass;
+          bassEnergy = beatIntensityRef.current;
         }
       }
 
@@ -377,9 +387,10 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isPlaying, vol
         }
 
       } else {
-        // --- MODE 5: SPECTRUM BARS WITH FLOATING PEAKS & REFLECTION ---
-        const barWidth = Math.max(2, (width / barsCount) - 2.5);
-        const gap = 2.5;
+        // --- MODE 5: MODERN EQUALIZER BARS 2.0 ---
+        const barWidth = Math.max(3, (width / barsCount) - 3);
+        const gap = 3;
+        const radius = 2;
 
         for (let i = 0; i < barsCount; i++) {
           let target = 3;
@@ -388,7 +399,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isPlaying, vol
             if (useRealData && dataArrayRef.current) {
               const bin = Math.floor(i * (dataArrayRef.current.length * 0.45) / barsCount);
               const val = dataArrayRef.current[bin] / 255;
-              target = Math.max(4, val * maxBarHeight * Math.max(0.2, volume));
+              target = Math.max(4, val * maxBarHeight * Math.max(0.2, volume) * (1 + bassEnergy * 0.5));
             } else {
               const s1 = Math.sin(phase + i * 0.2);
               const s2 = Math.cos(phase * 1.4 + i * 0.35);
@@ -397,41 +408,41 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ isPlaying, vol
             }
           }
 
-          barHeights[i] += (target - barHeights[i]) * 0.25;
-          const h = barHeights[i];
+          // More responsive and fluid animation
+          barHeights[i] += (target - barHeights[i]) * 0.3;
+          const h = Math.max(3, barHeights[i]);
 
-          // Update floating peak dots logic
+          // Dynamic peak logic with faster reactivity
           if (h > peakPositions[i]) {
             peakPositions[i] = h;
             peakVelocities[i] = 0;
           } else {
-            peakVelocities[i] += 0.25; // gravity
+            peakVelocities[i] += 0.3; 
             peakPositions[i] -= peakVelocities[i];
             if (peakPositions[i] < 3) peakPositions[i] = 3;
           }
 
           const bx = i * (barWidth + gap);
 
-          // Main Bar Gradient
+          // Advanced Vibrant Gradient
           const barGrad = ctx.createLinearGradient(0, height, 0, height - h);
           barGrad.addColorStop(0, theme.stops[0]);
-          barGrad.addColorStop(0.6, theme.stops[1]);
+          barGrad.addColorStop(0.5, theme.stops[1]);
           barGrad.addColorStop(1, theme.stops[2]);
 
           ctx.fillStyle = barGrad;
           ctx.beginPath();
-          if (ctx.roundRect) {
-            ctx.roundRect(bx, height - h, barWidth, h, [3, 3, 0, 0]);
-          } else {
-            ctx.rect(bx, height - h, barWidth, h);
-          }
+          // Dynamic rounded bars with slight stretching on high energy
+          ctx.roundRect(bx, height - h - (bassEnergy * 5), barWidth, h + (bassEnergy * 5), radius);
           ctx.fill();
 
-          // Draw Floating Peak Line
+          // Enhanced Floating Peak Indicators
           if (isPlaying && peakPositions[i] > 4) {
-            const peakY = height - peakPositions[i] - 2;
+            const peakY = height - peakPositions[i] - 5;
             ctx.fillStyle = theme.peak;
-            ctx.fillRect(bx, Math.max(0, peakY), barWidth, 1.8);
+            ctx.beginPath();
+            ctx.roundRect(bx, Math.max(0, peakY), barWidth, 4, 2);
+            ctx.fill();
           }
         }
       }

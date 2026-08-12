@@ -15,7 +15,15 @@
         "subscriptionExpiresAt": { "type": "string" },
         "status": { "type": "string" },
         "isAdmin": { "type": "boolean" },
-        "permissions": { "type": "object" }
+        "permissions": { "type": "object" },
+        "lastIpAddress": { "type": "string" },
+        "hardwareId": { "type": "string" },
+        "ipHistory": { "type": "array" },
+        "lastLoginAt": { "type": "string" },
+        "isBanned": { "type": "boolean" },
+        "bannedIp": { "type": "boolean" },
+        "bannedHwid": { "type": "boolean" },
+        "banReason": { "type": "string" }
       },
       "required": ["uid"]
     },
@@ -35,12 +43,46 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "userId", "planName", "status", "createdAt"]
+    },
+    "UserFavorite": {
+      "title": "UserFavorite",
+      "description": "A track favorited by a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "trackId": { "type": "string", "maxLength": 128 },
+        "addedAt": { "type": "string" }
+      },
+      "required": ["id", "trackId", "addedAt"]
+    },
+    "UserPlaylist": {
+      "title": "UserPlaylist",
+      "description": "A playlist created or imported by a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "coverImage": { "type": "string", "maxLength": 1000 },
+        "trackIds": { "type": "array", "maxLength": 1000 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "trackIds", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "UserProfile",
       "description": "User profile collection"
+    },
+    "/users/{userId}/favorites/{favoriteId}": {
+      "schema": "UserFavorite",
+      "description": "User favorites subcollection"
+    },
+    "/users/{userId}/playlists/{playlistId}": {
+      "schema": "UserPlaylist",
+      "description": "User playlists subcollection"
     },
     "/subscription_requests/{requestId}": {
       "schema": "SubscriptionRequest",

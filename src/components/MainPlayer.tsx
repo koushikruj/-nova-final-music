@@ -13,6 +13,7 @@ import {
   PlusCircle,
   AlertCircle,
   Mic2,
+  MonitorPlay,
   FastForward,
   Rewind
 } from 'lucide-react';
@@ -46,6 +47,8 @@ export const MainPlayer: React.FC = () => {
     toggleFavorite,
     setActiveDrawer,
     activeDrawer,
+    isVideoMode,
+    setIsVideoMode,
     hasPermission
   } = usePlayer();
 
@@ -70,10 +73,10 @@ export const MainPlayer: React.FC = () => {
     <main id="main-player-controls" className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 max-w-4xl mx-auto w-full text-white select-none">
       {/* Frosted Glass Player Card Container with Evolving Album-Matched Outer Glow */}
       <div
-        className="w-full bg-neutral-900/50 backdrop-blur-2xl border rounded-3xl p-5 sm:p-7 shadow-2xl backdrop-saturate-150 transition-all duration-700 relative overflow-hidden"
+        className="w-full glass-panel rounded-3xl p-6 sm:p-8 transition-all duration-700 relative overflow-hidden"
         style={{
-          borderColor: `rgba(${dominantColors.rgb}, ${isPlaying ? '0.35' : '0.18'})`,
-          boxShadow: `0 25px 60px -15px rgba(0, 0, 0, 0.85), 0 0 ${isPlaying ? '45px' : '22px'} rgba(${dominantColors.rgb}, ${isPlaying ? '0.3' : '0.12'})`
+          borderColor: `rgba(${dominantColors.rgb}, 0.2)`,
+          boxShadow: `0 25px 60px -15px rgba(0, 0, 0, 0.85), 0 0 ${isPlaying ? '60px' : '30px'} rgba(${dominantColors.rgb}, ${isPlaying ? '0.25' : '0.08'})`
         }}
       >
         {/* Ambient subtle glow background inside card evolving with album art */}
@@ -144,17 +147,17 @@ export const MainPlayer: React.FC = () => {
         <div className="flex-1 w-full max-w-md lg:max-w-lg flex flex-col items-center lg:items-start text-center lg:text-left">
           {/* Audio Wave Visualizer */}
           <AudioVisualizer isPlaying={isPlaying} volume={isMuted ? 0 : volume} />
-
+          
           {/* Track Metadata */}
-          <div className="mt-2 mb-3 w-full">
-            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-white line-clamp-1">
+          <div className="mt-4 mb-6 w-full text-center lg:text-left">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white line-clamp-1">
               {currentTrack.title}
             </h1>
-            <p className="text-sm sm:text-base font-medium text-neutral-400 mt-1 line-clamp-1">
+            <p className="text-base sm:text-lg font-medium text-neutral-300 mt-2 line-clamp-1">
               {currentTrack.artist}
             </p>
-            <p className="text-xs text-neutral-500 font-mono mt-0.5">
-              {currentTrack.album} {currentTrack.year ? `• ${currentTrack.year}` : ''}
+            <p className="text-xs text-neutral-500 font-mono mt-1 tracking-widest uppercase">
+              {currentTrack.album}
             </p>
           </div>
 
@@ -167,83 +170,65 @@ export const MainPlayer: React.FC = () => {
           />
 
           {/* Primary Playback Controls */}
-          <div className="flex items-center justify-center lg:justify-start w-full gap-2 sm:gap-4 lg:gap-5 my-3">
+          <div className="flex items-center justify-center lg:justify-start w-full gap-4 sm:gap-6 my-6">
             {/* Shuffle Button */}
             <button
               onClick={toggleShuffle}
-              className={`p-2 rounded-full transition-colors duration-200 ${
+              className={`p-3 rounded-full transition-all duration-300 hover:bg-white/10 ${
                 shuffle
-                  ? 'text-white bg-white/10'
-                  : 'text-neutral-400 hover:text-white'
+                  ? 'text-white'
+                  : 'text-neutral-500 hover:text-white'
               }`}
               title={shuffle ? 'Shuffle On' : 'Shuffle Off'}
             >
-              <Shuffle className="w-4 h-4" />
+              <Shuffle className="w-5 h-5" />
             </button>
 
             {/* Previous Track */}
             <button
               onClick={previous}
-              className="p-2 text-neutral-300 hover:text-white transition-transform duration-150 active:scale-90"
+              className="p-3 text-neutral-300 hover:text-white transition-all duration-300 active:scale-90"
               title="Previous Track (Left Arrow)"
             >
-              <SkipBack className="w-5 h-5 fill-current" />
-            </button>
-
-            {/* Skip Backward 10s */}
-            <button
-              onClick={() => seek(Math.max(0, currentTime - 10))}
-              className="p-2 text-neutral-400 hover:text-white transition-transform duration-150 active:scale-90"
-              title="Rewind 10s"
-            >
-              <Rewind className="w-4 h-4" />
+              <SkipBack className="w-6 h-6 fill-current" />
             </button>
 
             {/* Play/Pause Main Button */}
             <button
               onClick={togglePlay}
-              className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all duration-200 focus:outline-none shrink-0"
+              className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white text-black flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition-all duration-300 focus:outline-none shrink-0"
               title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
             >
               {isPlaying ? (
-                <Pause className="w-5 h-5 sm:w-6 sm:h-6 fill-current" />
+                <Pause className="w-7 h-7 sm:w-8 sm:h-8 fill-current" />
               ) : (
-                <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current translate-x-0.5" />
+                <Play className="w-7 h-7 sm:w-8 sm:h-8 fill-current translate-x-0.5" />
               )}
-            </button>
-
-            {/* Skip Forward 10s */}
-            <button
-              onClick={() => seek(Math.min(duration || 0, currentTime + 10))}
-              className="p-2 text-neutral-400 hover:text-white transition-transform duration-150 active:scale-90"
-              title="Fast Forward 10s"
-            >
-              <FastForward className="w-4 h-4" />
             </button>
 
             {/* Next Track */}
             <button
               onClick={next}
-              className="p-2 text-neutral-300 hover:text-white transition-transform duration-150 active:scale-90"
+              className="p-3 text-neutral-300 hover:text-white transition-all duration-300 active:scale-90"
               title="Next Track (Right Arrow)"
             >
-              <SkipForward className="w-5 h-5 fill-current" />
+              <SkipForward className="w-6 h-6 fill-current" />
             </button>
 
             {/* Repeat Cycle Button */}
             <button
               onClick={cycleRepeat}
-              className={`p-2 rounded-full transition-colors duration-200 relative ${
+              className={`p-3 rounded-full transition-all duration-300 hover:bg-white/10 ${
                 repeatMode !== 'off'
-                  ? 'text-white bg-white/10'
-                  : 'text-neutral-400 hover:text-white'
+                  ? 'text-white'
+                  : 'text-neutral-500 hover:text-white'
               }`}
               title={`Repeat: ${repeatMode}`}
             >
               {repeatMode === 'one' ? (
-                <Repeat1 className="w-4 h-4 text-emerald-400" />
+                <Repeat1 className="w-5 h-5 text-emerald-400" />
               ) : (
-                <Repeat className="w-4 h-4" />
+                <Repeat className="w-5 h-5" />
               )}
             </button>
           </div>
@@ -288,6 +273,18 @@ export const MainPlayer: React.FC = () => {
 
             <div className="flex items-center gap-1">
               {/* Lyrics Button (visible if user has lyrics permission) */}
+              
+              {/* Video Mode Button */}
+              <button
+                onClick={() => setIsVideoMode(!isVideoMode)}
+                className={`p-2 rounded-full transition-colors ${
+                  isVideoMode ? 'text-blue-400 bg-blue-400/10' : 'hover:text-white'
+                }`}
+                title="Toggle Video Player"
+              >
+                <MonitorPlay className="w-5 h-5" />
+              </button>
+
               {hasPermission('canAccessLyrics') && (
                 <button
                   onClick={() => setActiveDrawer('lyrics')}
